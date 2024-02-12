@@ -4,7 +4,6 @@ import pandas as pd
 import pandera as pa
 import streamlit as st
 
-# P66 specific categories
 AIMI_CATEGORIES = [
     '-',
     '1_Full_RBI',
@@ -14,31 +13,6 @@ AIMI_CATEGORIES = [
     '5_Piping',
     '6_Other'
 ]
-
-
-# class TemplateValidator:
-#     """Base class for template validation"""
-
-#     def __init__(self, id_column: str,
-#                  mandatory_columns: list[str] = None,
-#                  picklists_df: dict[str, list[str]] = None,
-#                  df_rules: pd.DataFrame = None):
-#         """Initialize class."""
-#         self._columns: list[str] = mandatory_columns
-#         self._df_picklists_map: dict[str, list[str]] = self.df_to_picklist_map(picklists_df)
-#         self._df_rules: pd.DataFrame = df_rules
-        
-#         self._check_empty = \
-#             pa.Check(lambda x: x != '', error='Value cannot be empty', element_wise=True)
-#         self._check_duplicate = pa.Check(lambda x: ~x.duplicated(), error='Value is duplicated')
-
-#         self._schema_dict = {
-#             id_column: pa.Column(checks=[self._check_duplicate], required=True)
-#         }
-
-#         if 'AIMI Category' in self._columns:
-#             self._schema_dict['AIMI Category'] = \
-#                 pa.Column(checks=[self.check_picklist(AIMI_CATEGORIES)], required=True)
 
 
 def validate(df_input: pd.DataFrame, df_rules, df_picklists_map, schema_dict, check_empty, check_duplicate) -> pd.DataFrame:
