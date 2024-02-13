@@ -14,73 +14,6 @@ AIMI_CATEGORIES = [
     '6_Other'
 ]
 
-
-def validate(df_input: pd.DataFrame, df_rules, df_picklists_map, schema_dict, check_empty, check_duplicate) -> pd.DataFrame:
-    """Validate input table."""
-    print(df_input.columns)
-    print(df_rules['Column'].values)
-    print()
-
-    for index in df_rules.index:
-        column = df_rules.loc[index]['Column']
-        if column in schema_dict:
-            continue
-
-        field_type = df_rules.loc[index]['Data Type']
-        print(field_type)
-        
-        if column in df_picklists_map:
-            schema_dict[column] = \
-                pa.Column(
-                    checks=[check_picklist(df_picklists_map[column])], 
-                    required=False
-                    )
-        elif 'Alpha/Numeric' in field_type:
-            schema_dict[column] = pa.Column(checks=[check_alphanumeric()],
-                                                    required=False)
-        elif 'Numeric' in field_type:
-            decimals = df_rules.loc[df_rules['Column'] == column,'Decimals'].iloc[0]
-            schema_dict[column] = pa.Column(
-                checks=[check_number(), check_decimals(decimals)],
-                required=False
-            )
-        elif 'Date' in field_type:
-            schema_dict[column] = pa.Column(checks=[check_date_format()], required=False)
-        elif 'Y/N' in field_type:
-            schema_dict[column] = pa.Column(checks=[check_picklist(["Y", "N"])], required=False)
-        else:
-            schema_dict[column] = pa.Column(required=False)
-
-    dynamic_schema = pa.DataFrameSchema(
-        columns=schema_dict,
-        checks=[check_empty],
-        unique_column_names=True,
-        strict=True
-    )
-
-    try:
-        dynamic_schema.validate(df_input.fillna('').astype(str), lazy=True)
-        return pd.DataFrame()
-    except pa.errors.SchemaErrors as e:
-        replacements = {
-            'field_uniqueness': 'Field is not unique',
-            'column_in_dataframe': 'Missing mandatory column',
-            'column_in_schema': 'Unknown column name',
-        }
-        error_df = pd.DataFrame(e.failure_cases[['column', 'check', 'failure_case', 'index']])
-        error_df.fillna('', inplace=True)
-        
-        error_df['check'] = error_df['check'].replace(replacements)
-        
-        error_df = error_df.rename(
-            columns={
-                'column': 'Column', 'check': 'Error', 'failure_case': 'Value', 'index': 'Index'
-            })
-
-        error_df['Index'] = error_df['Index'].map(lambda x: int(x)+2 if str(x).isnumeric() else x)
-        
-        return error_df
-
 def df_to_picklist_map(df: pd.DataFrame) -> dict:
         """Transform table to dictionary of picklists."""
         picklist_dict = df.to_dict(orient='list')
@@ -133,14 +66,6 @@ def check_alphanumeric():
         element_wise=True
     )
 
-def is_float(string):
-    """Verifies if input is a number."""
-    try:
-        float(string)
-        return True
-    except ValueError:
-        return False
-
 def check_number():
     """Verifies that the column from a dataframe is numeric."""
     def _is_float(string):
@@ -160,7 +85,7 @@ def check_decimals(decimals):
     """Verifies the number of decimal places in a number."""
     def _check_number_of_decimals(number, decimals):
         """Internal helper to check the number of decimals."""
-        if not decimals.isnumeric():
+        if not str(decimals).isnumeric():
             return True  # can have any number of decimals
         required_decimals = int(decimals)
         fractional_part = ''
@@ -169,6 +94,7 @@ def check_decimals(decimals):
             if fractional_part == '0':
                 fractional_part = ''
         if len(fractional_part) <= required_decimals:
+            
             return True
         return False
 
@@ -179,9 +105,7 @@ def check_decimals(decimals):
     )
 
 def validator(excel_file):
-    print('here')
-
-    path = r"C:\Users\dumit\OneDrive\Desktop\PY validator\excel validator\Equipment_Data_Mocked.xlsx"
+    # path = "C:\Users\dumit\OneDrive\Desktop\PY validator\excel validator\Equipment_Data_Mocked.xlsx"
 
     input_df = pd.read_excel(excel_file, sheet_name='Equipment Invalid')
     rules_df = pd.read_excel(excel_file, sheet_name='Data Types')
@@ -196,7 +120,6 @@ def validator(excel_file):
         "Category"
     ]
 
-
     id_column = 'Equipment ID'
 
     columns: list[str] = primary_columns
@@ -207,20 +130,64 @@ def validator(excel_file):
         pa.Check(lambda x: x != '', error='Value cannot be empty', element_wise=True)
     check_duplicate = pa.Check(lambda x: ~x.duplicated(), error='Value is duplicated')
 
-    schema_dict = {
-        id_column: pa.Column(checks=[check_duplicate], required=True)
-    }
+    extra_columns_check = pa.Check(lambda df: check_extra_columns(df, expected_columns) == [], 
+                               element_wise=False,
+                               error='Extra columns found: {extra_columns}',
+                               extra_columns=pa.Column(pa.String))
 
     if 'AIMI Category' in columns:
         schema_dict['AIMI Category'] = \
             pa.Column(checks=[check_picklist(AIMI_CATEGORIES)], required=True)
 
+    schema_dict = {
+        'Plant': pa.Column(checks=[check_uniqueness('Plant 1')], required=True),
+        'Equipment ID': pa.Column(checks=[check_duplicate, check_alphanumeric()], required=True),
+        'Description': pa.Column(checks=[check_alphanumeric()], required=True),
+        'Type': pa.Column(checks=[check_picklist(df_picklists_map['Type'])], required=True),
+        'Category': pa.Column(checks=[check_picklist(df_picklists_map['Category'])], required=True),
+        'Operating Status': pa.Column(checks=[check_picklist(df_picklists_map['Operating Status'])], required=False),
+        'Design Code': pa.Column(checks=[check_alphanumeric()], required=False),
+        'Scope (Yes or No)': pa.Column(checks=[check_picklist(["Yes", "No"])], required=False),
+        'Justification': pa.Column(checks=[check_alphanumeric()], required=False),
+        'Install Date': pa.Column(checks=[check_date_format()], required=False),
+        'Temperature': pa.Column(checks=[check_number(), check_decimals(0)], required=False),
+        'Pressure': pa.Column(checks=[check_number(), check_decimals(2)], required=False),
+        'Environment': pa.Column(checks=[check_picklist(df_picklists_map['Environment'])], required=False),
+        'Material': pa.Column(checks=[check_picklist(df_picklists_map['Material'])], required=False),
+    }
 
+    dynamic_schema = pa.DataFrameSchema(
+        columns=schema_dict,
+        # checks=[check_empty],
+        unique_column_names=True,
+        strict=True
+    )
 
-    df_errors = validate(input_df, df_rules, df_picklists_map, schema_dict, check_empty, check_duplicate)
+    try:
+        dynamic_schema.validate(input_df.fillna('').astype(str), lazy=True)
+        return pd.DataFrame()
+    except pa.errors.SchemaErrors as e:
+        replacements = {
+            'field_uniqueness': 'Field is not unique',
+            'column_in_dataframe': 'Missing mandatory column',
+            'column_in_schema': 'Unknown column name',
+        }
+        error_df = pd.DataFrame(e.failure_cases[['column', 'check', 'failure_case', 'index']])
+        error_df.fillna('', inplace=True)
+        
+        error_df['check'] = error_df['check'].replace(replacements)
+        
+        error_df = error_df.rename(
+            columns={
+                'column': 'Column', 'check': 'Error', 'failure_case': 'Value', 'index': 'Index'
+            })
+
+        error_df['Index'] = error_df['Index'].map(lambda x: int(x)+2 if str(x).isnumeric() else x)
+        
+    # df_errors = validate(input_df, df_rules, df_picklists_map, schema_dict, check_empty, check_duplicate, columns)
 
     # df_errors.to_excel("output.xlsx", index=False)
 
-    return df_errors
+        return error_df
 
 
