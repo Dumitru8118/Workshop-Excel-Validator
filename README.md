@@ -48,5 +48,8 @@ Copy code
 ```
 streamlit run frontend.py
 ```
-Replace script_name.py with the name of your Python script.
+After running the command the terminal should display something like this:
 
+<img width="746" alt="image" src="https://github.com/Dumitru8118/Workshop-Excel-Validator/assets/86912887/a988b74a-b449-4ad8-a96c-08b5f295e9b8">
+
+Press Ctrl + click on the Local URL to see the application running on the browser.
